@@ -1,88 +1,82 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/kthread.h> // NEW: For background threads
+#include <linux/delay.h>   // NEW: For sleeping
 
-// Bring in our Wasm Engine
 #include "wasm-engine/wasm3.h"
 #include "wasm-engine/m3_env.h"
-
-// Bring in our auto-compiled Wasm binary!
 #include "wasm_payload.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Nyx Architect");
-MODULE_DESCRIPTION("Project Nyx: WALI Translation Layer");
-MODULE_VERSION("0.4");
+MODULE_DESCRIPTION("Project Nyx: Threaded Ring-0 Wasm Unikernel");
+MODULE_VERSION("1.0");
 
-// Pointers to keep the engine alive during module lifespan
 IM3Environment env = NULL;
 IM3Runtime runtime = NULL;
 IM3Module module = NULL;
 IM3Function run_func = NULL;
+static struct task_struct *nyx_thread; // Our engine's heartbeat
 
-// ============================================================================
-// WALI: WebAssembly Linux Interface
-// Intercepts Wasm calls and translates them to Kernel operations
-// ============================================================================
-m3ApiRawFunction(wali_print)
-{
+// WALI Translation Layer
+m3ApiRawFunction(wali_print) {
     m3ApiGetArgMem(const char*, message); 
-    
-    // Wasm just passed us '0' (the memory offset).
-    // The engine's macro automatically translates that '0' into the actual 
-    // physical memory address where the Wasm sandbox lives in the kernel.
-    
-    printk(KERN_INFO "[WALI-STDOUT] %s\n", message);
-    
+    printk(KERN_INFO "[WALI-STDOUT] Wasm says: %s\n", message);
     m3ApiSuccess();
 }
-// ============================================================================
+
+// The continuous background polling loop
+static int nyx_engine_loop(void *data) {
+    printk(KERN_INFO "[NYX-CORE] Engine heartbeat started.\n");
+    
+    while (!kthread_should_stop()) {
+        // In production, we'd check the eBPF map here.
+        // If a packet is found, we execute the Wasm payload to process it.
+        
+        M3Result result = m3_CallV(run_func);
+        if (result) printk(KERN_ERR "[NYX-FATAL] Wasm execution failed: %s\n", result);
+        
+        // Sleep for 5 seconds before checking the network again
+        msleep(5000); 
+    }
+    
+    printk(KERN_INFO "[NYX-CORE] Engine heartbeat stopped.\n");
+    return 0;
+}
 
 static int __init nyx_init(void) {
     M3Result result = m3Err_none;
+    printk(KERN_INFO "[NYX-CORE] Booting Unikernel...\n");
 
-    printk(KERN_INFO "[NYX-CORE] Entering Ring-0...\n");
-
-    // 1. Initialize the Environment & Runtime
     env = m3_NewEnvironment();
     runtime = m3_NewRuntime(env, 8192, NULL);
 
-    // 2. Parse and Load the Module using the auto-generated array
     result = m3_ParseModule(env, &module, wali_test_wasm, wali_test_wasm_len);
-    if (result) goto fatal_error;
+    if (result) return -EINVAL;
 
     result = m3_LoadModule(runtime, module);
-    if (result) goto fatal_error;
+    if (result) return -EINVAL;
 
-    // 3. THE WALI BINDING: Map the Wasm import to our C function
-    // "v(i)" tells the engine the function returns void (v) and takes one integer (i)
-    result = m3_LinkRawFunction(module, "env", "print", "v(i)", &wali_print);
-    if (result) {
-        printk(KERN_ERR "[NYX-FATAL] Failed to bind WALI interface: %s\n", result);
-        return -EINVAL;
+    m3_LinkRawFunction(module, "env", "print", "v(i)", &wali_print);
+    m3_FindFunction(&run_func, runtime, "run");
+
+    // Spawn the background thread!
+    nyx_thread = kthread_run(nyx_engine_loop, NULL, "nyx_engine_thread");
+    if (IS_ERR(nyx_thread)) {
+        printk(KERN_ERR "[NYX-FATAL] Failed to spawn engine thread.\n");
+        return PTR_ERR(nyx_thread);
     }
 
-    // 4. Find the "run" function
-    result = m3_FindFunction(&run_func, runtime, "run");
-    if (result) goto fatal_error;
-
-    printk(KERN_INFO "[NYX-CORE] Triggering WALI execution...\n");
-
-    // 5. Execute!
-    result = m3_CallV(run_func);
-    if (result) goto fatal_error;
-
     return 0;
-
-fatal_error:
-    printk(KERN_ERR "[NYX-FATAL] Execution failed: %s\n", result);
-    return -EFAULT;
 }
 
 static void __exit nyx_exit(void) {
+    // Stop the thread gracefully
+    if (nyx_thread) kthread_stop(nyx_thread);
     if (runtime) m3_FreeRuntime(runtime);
     if (env) m3_FreeEnvironment(env);
-    printk(KERN_INFO "[NYX-CORE] Exiting Ring-0.\n");
+    printk(KERN_INFO "[NYX-CORE] Unikernel offline.\n");
 }
 
 module_init(nyx_init);
