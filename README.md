@@ -4,7 +4,6 @@
 ![C](https://img.shields.io/badge/Language-C-blue?style=for-the-badge&logo=c)
 ![WebAssembly](https://img.shields.io/badge/Runtime-WebAssembly-orange?style=for-the-badge&logo=webassembly)
 ![eBPF](https://img.shields.io/badge/Network-eBPF_XDP-red?style=for-the-badge)
-![License](https://img.shields.io/badge/License-GPL-green?style=for-the-badge)
 
 Project Nyx is an experimental, bare-metal systems architecture that completely bypasses the traditional operating system privilege boundary (Ring-3 user-space vs. Ring-0 kernel-space) to achieve blazing-fast, mathematically sandboxed microservice execution. 
 
