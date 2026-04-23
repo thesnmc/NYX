@@ -1,6 +1,7 @@
 # 🌌 Project NYX
 > A unified Ring-0 WebAssembly composable Unikernel that processes network payloads and disk I/O at native hardware speeds without a single user-space context switch.
-
+>
+> [![License](https://img.shields.io/badge/License-TheSNMC-blue.svg)](LICENSE)
 ---
 
 ## 📖 Overview
@@ -99,5 +100,5 @@ This project involves loading unsigned, highly privileged C code directly into R
 Contributions, issues, and feature requests are welcome. Feel free to check the issues page if you want to contribute. Future roadmaps include Symmetric Multiprocessing (SMP) scaling across CPU cores and WALI integration for Quantum RNG memory injection.
 
 ## 📄 License
-This project's core Ring-0 kernel module (`nyx_core`) is licensed under GPL v2 to ensure strict compatibility with the Linux Kernel's `EXPORT_SYMBOL_GPL` APIs. The WebAssembly payloads and user-space components are dual-licensed or open to proprietary modifications. See the LICENSE file for details.  
+See the LICENSE file for details.  
 Built by an independent developer in Chennai, India.
